@@ -64,6 +64,7 @@ class VerilogExporter:
         add_filter(self.full_array_ranges)
         add_filter(self.full_array_indexes)
         add_filter(self.bit_range)
+        add_filter(self.reg_flattened_width)
 
         add_test(self.has_intr, 'intr')
         add_test(self.has_halt, 'halt')
@@ -72,6 +73,7 @@ class VerilogExporter:
         add_test(self.is_hw_readable)
         add_test(self.is_up_counter)
         add_test(self.is_down_counter)
+        add_test(self.is_internal)
 
         # Top-level node
         self.top = None
@@ -127,6 +129,8 @@ class VerilogExporter:
         if isinstance(node, RootNode):
             node = node.top
 
+#        if node.get_property("int_sig"):
+#            add_test(self.is_internal)
 
         # go through top level regfiles
         modules = []
@@ -182,6 +186,21 @@ class VerilogExporter:
             template = self.jj_env.get_template("tb.cpp")
             stream = template.stream(context)
             stream.dump(os.path.join(path, node.inst_name + '_tb.cpp'))
+            template = self.jj_env.get_template("include_ports.v")
+            stream = template.stream(context)
+            stream.dump(os.path.join(path, node.inst_name + '_ports_include.vh'))
+            template = self.jj_env.get_template("include_wires.v")
+            stream = template.stream(context)
+            stream.dump(os.path.join(path, node.inst_name + '_wires_include.vh'))
+            template = self.jj_env.get_template("include_port_map.v")
+            stream = template.stream(context)
+            stream.dump(os.path.join(path, node.inst_name + '_port_map_include.vh'))
+            template = self.jj_env.get_template("include_tb_wires.v")
+            stream = template.stream(context)
+            stream.dump(os.path.join(path, node.inst_name + '_tb_wires_include.vh'))
+            template = self.jj_env.get_template("tb_digital_wrapper.v")
+            stream = template.stream(context)
+            stream.dump(os.path.join(path, node.inst_name + '_wrapper_tb.sv'))
 
         return [self._get_inst_name(m) for m in modules]
 
@@ -263,7 +282,6 @@ class VerilogExporter:
 
         return self._get_signal_name(val, index, 'q')
 
-
     def is_up_counter(self, node) -> bool:
         """
         Field is an up counter
@@ -284,7 +302,6 @@ class VerilogExporter:
                  node.get_property('decrwidth') or
                  node.get_property('decr')))
 
-
     # TODO: push back to systemrdlcompiler
     def is_hw_writable(self, node) -> bool:
         """
@@ -294,7 +311,6 @@ class VerilogExporter:
 
         return hw in (AccessType.rw, AccessType.rw1,
                         AccessType.w, AccessType.w1)
-
 
     # TODO: push back to systemrdlcompiler
     def is_hw_readable(self, node) -> bool:
@@ -316,6 +332,27 @@ class VerilogExporter:
         else:
             return self.full_array_dimensions(node.parent) + (node.array_dimensions or [])
 
+    def reg_flattened_width(self, node) -> int:
+        # Number of registers if array, else 1
+        vec_len = node.array_dimensions[0] if node.is_array else 1
+    
+        # Sum widths of all fields in the register
+        width = 0
+        for f in node.fields():
+            try:
+                width += f.get_width()
+            except Exception:
+                # fallback if get_width missing
+                width += getattr(f, 'width', 1)
+    
+        total_width = width * vec_len
+        return total_width
+
+    def is_internal(self, node) -> bool:
+        """
+        Field is not an input or output port in the include_ports file
+        """
+        return node.get_property("int_sig") 
 
     def full_array_indexes(self, node) -> list:
         """
@@ -363,7 +400,6 @@ class VerilogExporter:
                 return fmt.format(lsb=0, msb=node.width-1)
             else:
                 return fmt.format(lsb=node.lsb, msb=node.msb)
-
 
     def has_intr(self, node: RegNode) -> bool:
         """
