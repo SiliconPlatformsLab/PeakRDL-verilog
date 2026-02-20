@@ -45,7 +45,7 @@
 
 module {{get_inst_name(top_node)}}_tb #(
     parameter                                ADDR_OFFSET = 'h0,  // Module's offset in the main address map
-    parameter                                ADDR_WIDTH  = 6,   // Width of SW address bus
+    parameter                                ADDR_WIDTH  = {{ADDR_WIDTH}},   // Width of SW address bus
     parameter                                DATA_WIDTH  = 8    // Width of SW data bus
 );
     // Clocks and resets
