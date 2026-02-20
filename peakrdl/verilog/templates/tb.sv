@@ -109,6 +109,8 @@ module {{get_inst_name(top_node)}}_tb #(
     logic {{node.parent|full_array_ranges}}        {{signal(node, '', 'decrthreshold')}};
     logic {{node.parent|full_array_ranges}}        {{signal(node, '', 'decrsaturate')}};
  {%- endif -%}
+{%- elif isinstance(node, SignalNode) %}
+    logic [{{node.get_property('signalwidth')-1}}:0] {{signal(node)}};
 {%- endif -%}
 {%- endfor %}
 
@@ -182,6 +184,8 @@ module {{get_inst_name(top_node)}}_tb #(
         {{signal(node, '', 'decrvalue')}} <= '0;
     {%- endif -%}
 {%- endif -%}
+{%- elif isinstance(node, SignalNode) %}
+        {{signal(node)}} <= '0;
 {%- endif -%}
 {%- endfor %}
 
@@ -201,14 +205,39 @@ module {{get_inst_name(top_node)}}_tb #(
         repeat(5) @(cb);
         $display("%t: Testcase ({{signal(node)}} {{full_idx(node.parent)}}):", $time());
     {%- if node is hw_writable %}
+      {%- if node.get_property('wel') %}
+        {%- set we_override = get_prop_value(node, full_idx(node.parent), 'wel', hw_on_true=True) %}
+        {%- set we_on = "1'b0" %}
+        {%- set we_off = "1'b1" %}
+      {%- elif node is with_we and isinstance(node.get_property('we'), (SignalNode, FieldNode)) %}
+        {%- set we_override = get_prop_value(node, full_idx(node.parent), 'we', hw_on_true=True) %}
+        {%- set we_on = "1'b1" %}
+        {%- set we_off = "1'b0" %}
+      {%- else %}
+        {%- set we_override = '' %}
+      {%- endif %}
         $display("%t:\tHardware write test", $time());
         for (int IDX = {{node.lsb}}; IDX <= {{node.msb}}; ++IDX) begin
 
+      {%- if we_override %}
+            {{we_override}} <= {{we_on}};
+            {{signal(node, full_idx(node.parent), 'wdata')}} <= (1 << (IDX-{{node.lsb}}));
+            @(cb);
+            {{we_override}} <= {{we_off}};
+      {%- else %}
             `HW_WRITE( {{signal(node)}}, {{full_idx(node.parent)}}, (1 << (IDX-{{node.lsb}})) )
+      {%- endif %}
             `SW_READ( {{node.parent.absolute_address}} )
             `CHECK_EQUAL(rdata[{{node|bit_range}}], (1 << (IDX-{{node.lsb}})))
 
+      {%- if we_override %}
+            {{we_override}} <= {{we_on}};
+            {{signal(node, full_idx(node.parent), 'wdata')}} <= 0;
+            @(cb);
+            {{we_override}} <= {{we_off}};
+      {%- else %}
             `HW_WRITE( {{signal(node)}}, {{full_idx(node.parent)}}, 0 )
+      {%- endif %}
             `SW_READ( {{node.parent.absolute_address}} )
             `CHECK_EQUAL(rdata[{{node|bit_range}}], 0)
 
