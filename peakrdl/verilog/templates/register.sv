@@ -16,7 +16,7 @@ assign {{signal(node)}}_sw_rd = sw_rd && {{signal(node)}}_decode;
 
 always_comb begin
     {{signal(node)}}_q = '0;
-{%- for child in node.fields() %}
+{%- for child in node.fields() if child.is_sw_readable %}
     {{signal(node)}}_q[{{child|bit_range}}] = {{signal(child, index, 'q')}};
 {%- endfor %}
 end
